@@ -15,19 +15,20 @@ import ch.epfl.bluebrain.nexus.delta.sdk.directives.DeltaSchemeDirectives
 import ch.epfl.bluebrain.nexus.delta.sdk.generators.{ProjectGen, ResourceResolutionGen, SchemaGen}
 import ch.epfl.bluebrain.nexus.delta.sdk.identities.IdentitiesDummy
 import ch.epfl.bluebrain.nexus.delta.sdk.identities.model.Caller
+import ch.epfl.bluebrain.nexus.delta.sdk.implicits._
 import ch.epfl.bluebrain.nexus.delta.sdk.permissions.Permissions.{events, resources}
 import ch.epfl.bluebrain.nexus.delta.sdk.projects.FetchContextDummy
 import ch.epfl.bluebrain.nexus.delta.sdk.projects.model.ApiMappings
 import ch.epfl.bluebrain.nexus.delta.sdk.resolvers.ResolverContextResolution
-import ch.epfl.bluebrain.nexus.delta.sdk.resolvers.ResolverResolution.{FetchResource, ResourceResolution}
+import ch.epfl.bluebrain.nexus.delta.sdk.resolvers.ResolverResolution.FetchResource
 import ch.epfl.bluebrain.nexus.delta.sdk.resolvers.model.ResourceResolutionReport
 import ch.epfl.bluebrain.nexus.delta.sdk.resources.model.ResourceRejection.ProjectContextRejection
-import ch.epfl.bluebrain.nexus.delta.sdk.resources.{Resources, ResourcesConfig, ResourcesImpl}
+import ch.epfl.bluebrain.nexus.delta.sdk.resources.{ResourceValidator, Resources, ResourcesConfig, ResourcesImpl}
 import ch.epfl.bluebrain.nexus.delta.sdk.schemas.model.Schema
-import ch.epfl.bluebrain.nexus.delta.sdk.implicits._
 import ch.epfl.bluebrain.nexus.delta.sdk.utils.BaseRouteSpec
 import ch.epfl.bluebrain.nexus.delta.sourcing.model.Identity.{Anonymous, Authenticated, Group, Subject}
 import ch.epfl.bluebrain.nexus.delta.sourcing.model.{ProjectRef, ResourceRef}
+import ch.epfl.bluebrain.nexus.testkit.matchers.JsonMatchers._
 import io.circe.{Json, Printer}
 import monix.bio.{IO, UIO}
 
@@ -75,8 +76,8 @@ class ResourcesRoutesSpec extends BaseRouteSpec {
     case (ref, _) if ref.iri == schema1.id => UIO.some(SchemaGen.resourceFor(schema1))
     case _                                 => UIO.none
   }
-  private val resourceResolution: ResourceResolution[Schema]                  =
-    ResourceResolutionGen.singleInProject(projectRef, fetchSchema)
+  private val validator: ResourceValidator                                    =
+    new ResourceValidator(ResourceResolutionGen.singleInProject(projectRef, fetchSchema))
   private val fetchContext                                                    = FetchContextDummy(List(project.value), ProjectContextRejection)
   private val resolverContextResolution: ResolverContextResolution            = new ResolverContextResolution(
     rcr,
@@ -89,7 +90,7 @@ class ResourcesRoutesSpec extends BaseRouteSpec {
       ResourcesRoutes(
         IdentitiesDummy(caller),
         aclCheck,
-        ResourcesImpl(resourceResolution, fetchContext, resolverContextResolution, config, xas),
+        ResourcesImpl(validator, fetchContext, resolverContextResolution, config, xas),
         DeltaSchemeDirectives(fetchContext, ioFromMap(uuid -> projectRef.organization), ioFromMap(uuid -> projectRef)),
         IndexingAction.noop
       )
@@ -391,6 +392,27 @@ class ResourcesRoutesSpec extends BaseRouteSpec {
           status shouldEqual StatusCodes.OK
           response.asJson shouldEqual payload
         }
+      }
+    }
+
+    "validate a resource successfully against its latest schema" in {
+      Get("/v1/resources/myorg/myproject/_/myid2/validate") ~> routes ~> check {
+        status shouldEqual StatusCodes.OK
+        response.asJson should have(`@type`("sh:ValidationReport"))
+      }
+    }
+
+    "validate a resource against a schema that does not exist" in {
+      Get("/v1/resources/myorg/myproject/pretendschema/myid2/validate") ~> routes ~> check {
+        status shouldEqual StatusCodes.NotFound
+        response.asJson should have(`@type`("InvalidSchemaRejection"))
+      }
+    }
+
+    "validate a resource that does not exist" in {
+      Get("/v1/resources/myorg/myproject/_/pretendresource/validate") ~> routes ~> check {
+        status shouldEqual StatusCodes.NotFound
+        response.asJson should have(`@type`("ResourceNotFound"))
       }
     }
 

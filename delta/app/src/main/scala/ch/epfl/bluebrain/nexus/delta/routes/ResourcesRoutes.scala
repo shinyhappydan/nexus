@@ -180,6 +180,20 @@ final class ResourcesRoutes(
                           }
                         }
                       },
+                      (pathPrefix("validate") & get & pathEndOrSingleSlash & idSegmentRef(id)) { id =>
+                        operationName(s"$prefixSegment/resources/{org}/{project}/{schema}/{id}/validate") {
+                          authorizeFor(ref, Read).apply {
+                            emit(
+                              OK,
+                              resources
+                                .validate(id, ref, schemaOpt)
+                                .map(_.map(_.json))
+                                .leftWiden[ResourceRejection]
+                                .rejectWhen(wrongJsonOrNotFound)
+                            )
+                          }
+                        }
+                      },
                       // Fetch a resource original source
                       (pathPrefix("source") & get & pathEndOrSingleSlash & idSegmentRef(id)) { id =>
                         operationName(s"$prefixSegment/resources/{org}/{project}/{schema}/{id}/source") {
