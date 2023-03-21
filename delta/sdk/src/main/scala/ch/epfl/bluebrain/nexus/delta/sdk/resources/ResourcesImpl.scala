@@ -91,7 +91,7 @@ final class ResourcesImpl private (
       projectContext        <- fetchContext.onModify(projectRef)
       iri                   <- expandIri(id, projectContext)
       schemaRefOpt          <- expandResourceRef(schemaOpt, projectContext)
-      resource              <- log.stateOr(projectRef, iri, ResourceNotFound(iri, projectRef, schemaRefOpt))
+      resource              <- log.stateOr(projectRef, iri, ResourceNotFound(iri, projectRef))
       (compacted, expanded) <- sourceParser(projectRef, projectContext, iri, resource.source)
       res                   <-
         eval(RefreshResource(iri, projectRef, schemaRefOpt, compacted, expanded, resource.rev, caller), projectContext)
@@ -149,7 +149,7 @@ final class ResourcesImpl private (
       pc           <- fetchContext.onRead(projectRef)
       iri          <- expandIri(id.value, pc)
       schemaRefOpt <- expandResourceRef(schemaOpt, pc)
-      notFound      = ResourceNotFound(iri, projectRef, schemaRefOpt)
+      notFound      = ResourceNotFound(iri, projectRef)
       state        <- id match {
                         case Latest(_)        => log.stateOr(projectRef, iri, notFound)
                         case Revision(_, rev) =>
