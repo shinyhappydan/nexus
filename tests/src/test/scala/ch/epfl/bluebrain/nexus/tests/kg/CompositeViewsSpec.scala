@@ -32,6 +32,9 @@ class CompositeViewsSpec extends BaseSpec {
   private val albumsProject = "albums"
   private val songsProject  = "songs"
 
+  private val compositeView = "composite"
+  private val compositeViewWithContext = "composite-ctx"
+
   "Creating projects" should {
     "add necessary permissions for user" in {
       aclDsl.addPermissions(
@@ -140,7 +143,7 @@ class CompositeViewsSpec extends BaseSpec {
         ): _*
       )
 
-      deltaClient.put[Json](s"/views/$orgId/bands/composite", view, Jerry) { (json, response) =>
+      deltaClient.put[Json](s"/views/$orgId/$bandsProject/$compositeView", view, Jerry) { (json, response) =>
         if (response.status == StatusCodes.Created) succeed
         else fail(s"""The system returned an unexpected status code.
                |Expected: ${StatusCodes.Created}
@@ -232,7 +235,7 @@ class CompositeViewsSpec extends BaseSpec {
     "find all bands" in {
       waitForView()
       eventually {
-        deltaClient.post[Json](s"/views/$orgId/bands/composite/projections/bands/_search", sortAscendingById, Jerry) {
+        deltaClient.post[Json](s"/views/$orgId/$bandsProject/$compositeView/projections/bands/_search", sortAscendingById, Jerry) {
           (json, response) =>
             response.status shouldEqual StatusCodes.OK
             val actual   = Json.fromValues(hitsSource.getAll(json))
@@ -245,7 +248,7 @@ class CompositeViewsSpec extends BaseSpec {
     "find all albums" in {
       waitForView()
       eventually {
-        deltaClient.post[Json](s"/views/$orgId/bands/composite/projections/albums/_search", sortAscendingById, Jerry) {
+        deltaClient.post[Json](s"/views/$orgId/$bandsProject/$compositeView/projections/albums/_search", sortAscendingById, Jerry) {
           (json, response) =>
             response.status shouldEqual StatusCodes.OK
             val actual   = Json.fromValues(hitsSource.getAll(json))
@@ -277,7 +280,7 @@ class CompositeViewsSpec extends BaseSpec {
     "find all bands" in {
       waitForView()
       eventually {
-        deltaClient.post[Json](s"/views/$orgId/bands/composite/projections/bands/_search", sortAscendingById, Jerry) {
+        deltaClient.post[Json](s"/views/$orgId/$bandsProject/$compositeView/projections/bands/_search", sortAscendingById, Jerry) {
           (json, response) =>
             response.status shouldEqual StatusCodes.OK
             val actual   = Json.fromValues(hitsSource.getAll(json))
@@ -290,7 +293,7 @@ class CompositeViewsSpec extends BaseSpec {
     "find all albums" in {
       waitForView()
       eventually {
-        deltaClient.post[Json](s"/views/$orgId/bands/composite/projections/albums/_search", sortAscendingById, Jerry) {
+        deltaClient.post[Json](s"/views/$orgId/$bandsProject/$compositeView/projections/albums/_search", sortAscendingById, Jerry) {
           (json, response) =>
             response.status shouldEqual StatusCodes.OK
             val actual   = Json.fromValues(hitsSource.getAll(json))
@@ -316,7 +319,7 @@ class CompositeViewsSpec extends BaseSpec {
         ): _*
       )
 
-      deltaClient.put[Json](s"/views/$orgId/bands/composite-ctx", view, Jerry) { (json, response) =>
+      deltaClient.put[Json](s"/views/$orgId/$bandsProject/$compositeViewWithContext", view, Jerry) { (json, response) =>
         if (response.status == StatusCodes.Created) succeed
         else fail(s"""The system returned an unexpected status code.
                      |Expected: ${StatusCodes.Created}
@@ -331,14 +334,14 @@ class CompositeViewsSpec extends BaseSpec {
       Task
         .sleep(10.seconds)
         .runSyncUnsafe()
-      resetAndWait("composite-ctx")
+      resetAndWait(compositeViewWithContext)
     }
 
     "find all bands with context" in {
-      waitForView("composite-ctx")
+      waitForView(compositeViewWithContext)
       eventually {
         deltaClient
-          .post[Json](s"/views/$orgId/bands/composite-ctx/projections/bands/_search", sortAscendingById, Jerry) {
+          .post[Json](s"/views/$orgId/$bandsProject/$compositeViewWithContext/projections/bands/_search", sortAscendingById, Jerry) {
             (json, response) =>
               response.status shouldEqual StatusCodes.OK
               val actual   = Json.fromValues(hitsSource.getAll(json))
@@ -351,7 +354,7 @@ class CompositeViewsSpec extends BaseSpec {
 
   private def waitForView(viewId: String = "composite") = {
     eventually {
-      deltaClient.get[Json](s"/views/$orgId/bands/$viewId/projections/_/statistics", Jerry) { (json, response) =>
+      deltaClient.get[Json](s"/views/$orgId/$bandsProject/$viewId/projections/_/statistics", Jerry) { (json, response) =>
         val stats = root._results.each.as[Stats].getAll(json)
         logger.debug(s"Response: ${response.status} with ${stats.size} stats")
         stats.foreach { stat =>
@@ -369,7 +372,7 @@ class CompositeViewsSpec extends BaseSpec {
   }
 
   private def resetView(viewId: String) =
-    deltaClient.delete[Json](s"/views/$orgId/bands/$viewId/projections/_/offset", Jerry) { (_, response) =>
+    deltaClient.delete[Json](s"/views/$orgId/$bandsProject/$viewId/projections/_/offset", Jerry) { (_, response) =>
       logger.info(s"Resetting view responded with ${response.status}")
       response.status shouldEqual StatusCodes.OK
     }
@@ -385,7 +388,7 @@ class CompositeViewsSpec extends BaseSpec {
 
   "Delete composite views" should {
     "be ok" in {
-      deltaClient.delete[Json](s"/views/$orgId/bands/composite?rev=1", Jerry) { (_, response) =>
+      deltaClient.delete[Json](s"/views/$orgId/$bandsProject/$compositeView?rev=1", Jerry) { (_, response) =>
         response.status shouldEqual StatusCodes.OK
       }
     }
