@@ -259,6 +259,18 @@ class CompositeViewsSpec extends BaseSpec {
     }
   }
 
+  "handle deleting the offset" in {
+    val bandsProjection = "bands"
+
+    for {
+      _ <-deltaClient.delete[Json] (s"/views/$orgId/$bandsProject/$compositeView/projections/$bandsProjection/offset", Jerry) {(_, response) =>
+        response.status shouldEqual StatusCodes.OK
+      }
+      _ <- Task.sleep(30.seconds)
+      _ = waitForStatistics(compositeView, bandsProjection)
+    } yield succeed
+  }
+
   "uploading more data" should {
     "upload more songs" in {
       root.each.json
@@ -353,8 +365,17 @@ class CompositeViewsSpec extends BaseSpec {
   }
 
   private def waitForView(viewId: String = "composite") = {
+    waitForStatistics(viewId)
+    Task
+      .sleep(5.seconds)
+      .runSyncUnsafe() // after the view reports completion there's a short window until ES returns the results
+    succeed
+  }
+
+  private def waitForStatistics(viewId: String, projectionId: String = "_") = {
     eventually {
-      deltaClient.get[Json](s"/views/$orgId/$bandsProject/$viewId/projections/_/statistics", Jerry) { (json, response) =>
+      deltaClient.get[Json](s"/views/$orgId/$bandsProject/$viewId/projections/$projectionId/statistics", Jerry) { (json, response) =>
+        println(json.spaces2)
         val stats = root._results.each.as[Stats].getAll(json)
         logger.debug(s"Response: ${response.status} with ${stats.size} stats")
         stats.foreach { stat =>
@@ -365,10 +386,6 @@ class CompositeViewsSpec extends BaseSpec {
         response.status shouldEqual StatusCodes.OK
       }
     }
-    Task
-      .sleep(5.seconds)
-      .runSyncUnsafe() // after the view reports completion there's a short window until ES returns the results
-    succeed
   }
 
   private def resetView(viewId: String) =
