@@ -201,7 +201,6 @@ final class ElasticSearchViews private (
   )(implicit caller: Caller): IO[ViewResource] = {
     for {
       (iri, pc) <- expandWithContext(fetchContext.onModify, project, id)
-      _         <- validateNotDefaultView(iri)
       value     <- sourceDecoder(project, pc, iri, source)
       res       <- eval(UpdateElasticSearchView(iri, project, rev, value, source, caller.subject))
     } yield res
@@ -232,7 +231,6 @@ final class ElasticSearchViews private (
   )(implicit subject: Subject): IO[ViewResource] = {
     for {
       (iri, _) <- expandWithContext(fetchContext.onModify, project, id)
-      _        <- validateNotDefaultView(iri)
       res      <- eval(TagElasticSearchView(iri, project, tagRev, tag, rev, subject))
     } yield res
   }.span("tagElasticSearchView")
@@ -257,14 +255,9 @@ final class ElasticSearchViews private (
   )(implicit subject: Subject): IO[ViewResource] = {
     for {
       (iri, _) <- expandWithContext(fetchContext.onModify, project, id)
-      _        <- validateNotDefaultView(iri)
       res      <- eval(DeprecateElasticSearchView(iri, project, rev, subject))
     } yield res
   }.span("deprecateElasticSearchView")
-
-  private def validateNotDefaultView(iri: Iri): IO[Unit] = {
-    IO.raiseWhen(iri == defaultViewId)(ViewIsDefaultView)
-  }
 
   /**
     * Deprecates an existing ElasticSearchView without applying preliminary checks on the project status
@@ -510,19 +503,36 @@ object ElasticSearchViews {
       case Some(s)                               =>
         val newIndexingRev = nextIndexingRev(s.value, c.value, s.indexingRev, c.rev)
         for {
+          _ <- validateNotDefaultView(c.id)
           _ <- validate(s.uuid, newIndexingRev, c.value)
           t <- clock.realTimeInstant
         } yield ElasticSearchViewUpdated(c.id, c.project, s.uuid, c.value, c.source, s.rev + 1, t, c.subject)
     }
 
-    def tag(c: TagElasticSearchView) = state match {
-      case None                                               => IO.raiseError(ViewNotFound(c.id, c.project))
-      case Some(s) if s.rev != c.rev                          => IO.raiseError(IncorrectRev(c.rev, s.rev))
-      case Some(s) if c.targetRev <= 0 || c.targetRev > s.rev => IO.raiseError(RevisionNotFound(c.targetRev, s.rev))
-      case Some(s)                                            =>
-        clock.realTimeInstant.map(
-          ElasticSearchViewTagAdded(c.id, c.project, s.value.tpe, s.uuid, c.targetRev, c.tag, s.rev + 1, _, c.subject)
-        )
+    def tag(c: TagElasticSearchView) = {
+      IO.raiseWhen(c.id == defaultViewId)(ViewIsDefaultView) >>
+        (state match {
+          case None                                               => IO.raiseError(ViewNotFound(c.id, c.project))
+          case Some(s) if s.rev != c.rev                          => IO.raiseError(IncorrectRev(c.rev, s.rev))
+          case Some(s) if c.targetRev <= 0 || c.targetRev > s.rev => IO.raiseError(RevisionNotFound(c.targetRev, s.rev))
+          case Some(s)                                            =>
+            for {
+              now <- clock.realTimeInstant
+              _   <- validateNotDefaultView(c.id)
+            } yield {
+              ElasticSearchViewTagAdded(
+                c.id,
+                c.project,
+                s.value.tpe,
+                s.uuid,
+                c.targetRev,
+                c.tag,
+                s.rev + 1,
+                now,
+                c.subject
+              )
+            }
+        })
     }
 
     def deprecate(c: DeprecateElasticSearchView) = state match {
@@ -530,9 +540,14 @@ object ElasticSearchViews {
       case Some(s) if s.rev != c.rev => IO.raiseError(IncorrectRev(c.rev, s.rev))
       case Some(s) if s.deprecated   => IO.raiseError(ViewIsDeprecated(c.id))
       case Some(s)                   =>
-        clock.realTimeInstant.map(
-          ElasticSearchViewDeprecated(c.id, c.project, s.value.tpe, s.uuid, s.rev + 1, _, c.subject)
-        )
+        for {
+          now <- clock.realTimeInstant
+          _   <- validateNotDefaultView(c.id)
+        } yield ElasticSearchViewDeprecated(c.id, c.project, s.value.tpe, s.uuid, s.rev + 1, now, c.subject)
+    }
+
+    def validateNotDefaultView(iri: Iri): IO[Unit] = {
+      IO.raiseWhen(iri == defaultViewId)(ViewIsDefaultView)
     }
 
     cmd match {

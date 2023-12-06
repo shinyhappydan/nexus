@@ -486,7 +486,13 @@ class ElasticSearchViewsSpec extends CatsEffectSpec with DoobieScalaTestFixture 
     }
 
     "writing to the default view should fail" when {
+
       val defaultViewId = iri"nxv:defaultElasticSearchIndex"
+
+      "create default view, side effect for subsequent tests (sorry)" in {
+        views.create(defaultViewId, projectRef, json"""{"@type": "ElasticSearchView", "mapping": $mapping}""").accepted
+      }
+
       "deprecating" in {
         views.deprecate(defaultViewId, projectRef, 1).rejectedWith[ViewIsDefaultView]
       }
