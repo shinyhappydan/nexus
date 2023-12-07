@@ -368,7 +368,17 @@ class BlazegraphViewsRoutesSpec extends BlazegraphViewRoutesFixtures {
       }
     }
 
+    def thereIsAView(id: String) = {
+      Put(
+        s"/v1/views/org/proj/$id",
+        updatedIndexingSource.mapObject(_.removeKeys("@id")).toEntity
+      ) ~> asWriter ~> routes ~> check {
+        status shouldEqual StatusCodes.Created
+      }
+    }
+
     "reject if deprecating the default view" in {
+      thereIsAView("nxv:defaultSparqlIndex")
       Delete("/v1/views/org/proj/nxv:defaultSparqlIndex?rev=1") ~> asWriter ~> routes ~> check {
         status shouldEqual StatusCodes.Forbidden
         response.asJson shouldEqual

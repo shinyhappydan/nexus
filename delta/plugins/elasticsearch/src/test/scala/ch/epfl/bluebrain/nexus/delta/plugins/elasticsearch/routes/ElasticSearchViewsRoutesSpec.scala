@@ -362,6 +362,7 @@ class ElasticSearchViewsRoutesSpec extends ElasticSearchViewsRoutesFixtures with
     }
 
     "reject if deprecating the default view" in {
+      thereIsAView("nxv:defaultElasticSearchIndex")
       Delete("/v1/views/myorg/myproject/nxv:defaultElasticSearchIndex?rev=1") ~> routes ~> check {
         status shouldEqual StatusCodes.Forbidden
         response.asJson shouldEqual json"""{
@@ -370,6 +371,12 @@ class ElasticSearchViewsRoutesSpec extends ElasticSearchViewsRoutesFixtures with
           "reason": "Cannot perform write operations on the default ElasticSearch view."
         }"""
       }
+    }
+  }
+
+  private def thereIsAView(id: String) = {
+    Put(s"/v1/views/myorg/myproject/$id", payloadNoId.toEntity) ~> asAlice ~> routes ~> check {
+      status shouldEqual StatusCodes.Created
     }
   }
 
