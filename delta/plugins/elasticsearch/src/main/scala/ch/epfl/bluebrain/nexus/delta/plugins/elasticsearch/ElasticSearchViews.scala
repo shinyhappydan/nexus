@@ -487,10 +487,10 @@ object ElasticSearchViews {
     def create(c: CreateElasticSearchView) = state match {
       case None    =>
         for {
-          t <- clock.realTimeInstant
-          u <- uuidF()
-          _ <- validate(u, IndexingRev.init, c.value)
-        } yield ElasticSearchViewCreated(c.id, c.project, u, c.value, c.source, 1, t, c.subject)
+          now <- clock.realTimeInstant
+          u   <- uuidF()
+          _   <- validate(u, IndexingRev.init, c.value)
+        } yield ElasticSearchViewCreated(c.id, c.project, u, c.value, c.source, 1, now, c.subject)
       case Some(_) => IO.raiseError(ResourceAlreadyExists(c.id, c.project))
     }
 
@@ -503,10 +503,10 @@ object ElasticSearchViews {
       case Some(s)                               =>
         val newIndexingRev = nextIndexingRev(s.value, c.value, s.indexingRev, c.rev)
         for {
-          _ <- validateNotDefaultView(c.id)
-          _ <- validate(s.uuid, newIndexingRev, c.value)
-          t <- clock.realTimeInstant
-        } yield ElasticSearchViewUpdated(c.id, c.project, s.uuid, c.value, c.source, s.rev + 1, t, c.subject)
+          _   <- validateNotDefaultView(c.id)
+          _   <- validate(s.uuid, newIndexingRev, c.value)
+          now <- clock.realTimeInstant
+        } yield ElasticSearchViewUpdated(c.id, c.project, s.uuid, c.value, c.source, s.rev + 1, now, c.subject)
     }
 
     def tag(c: TagElasticSearchView) = {
