@@ -134,7 +134,6 @@ final class BlazegraphViews(
     for {
       pc        <- fetchContext.onModify(project)
       iri       <- expandIri(id, pc)
-      _         <- validateNotDefaultView(iri)
       viewValue <- sourceDecoder(project, pc, iri, source)
       res       <- eval(UpdateBlazegraphView(iri, project, viewValue, rev, source, caller.subject))
       _         <- createNamespace(res)
@@ -189,7 +188,6 @@ final class BlazegraphViews(
     for {
       pc  <- fetchContext.onModify(project)
       iri <- expandIri(id, pc)
-      _   <- validateNotDefaultView(iri)
       res <- eval(TagBlazegraphView(iri, project, tagRev, tag, rev, subject))
       _   <- createNamespace(res)
     } yield res
@@ -213,14 +211,9 @@ final class BlazegraphViews(
     for {
       pc  <- fetchContext.onModify(project)
       iri <- expandIri(id, pc)
-      _   <- validateNotDefaultView(iri)
       res <- eval(DeprecateBlazegraphView(iri, project, rev, subject))
     } yield res
   }.span("deprecateBlazegraphView")
-
-  private def validateNotDefaultView(iri: Iri): IO[Unit] = {
-    IO.raiseWhen(iri == defaultViewId)(ViewIsDefaultView)
-  }
 
   /**
     * Undeprecate a view.
@@ -477,9 +470,10 @@ object BlazegraphViews {
         IO.raiseError(DifferentBlazegraphViewType(s.id, c.value.tpe, s.value.tpe))
       case Some(s)                               =>
         for {
-          _ <- validate(c.value)
-          t <- clock.realTimeInstant
-        } yield BlazegraphViewUpdated(c.id, c.project, s.uuid, c.value, c.source, s.rev + 1, t, c.subject)
+          _   <- validate(c.value)
+          _   <- validateNotDefaultView(c.id)
+          now <- clock.realTimeInstant
+        } yield BlazegraphViewUpdated(c.id, c.project, s.uuid, c.value, c.source, s.rev + 1, now, c.subject)
     }
 
     def tag(c: TagBlazegraphView) = state match {
@@ -490,8 +484,19 @@ object BlazegraphViews {
       case Some(s) if c.targetRev <= 0 || c.targetRev > s.rev =>
         IO.raiseError(RevisionNotFound(c.targetRev, s.rev))
       case Some(s)                                            =>
-        clock.realTimeInstant.map(
-          BlazegraphViewTagAdded(c.id, c.project, s.value.tpe, s.uuid, c.targetRev, c.tag, s.rev + 1, _, c.subject)
+        for {
+          _   <- validateNotDefaultView(c.id)
+          now <- clock.realTimeInstant
+        } yield BlazegraphViewTagAdded(
+          c.id,
+          c.project,
+          s.value.tpe,
+          s.uuid,
+          c.targetRev,
+          c.tag,
+          s.rev + 1,
+          now,
+          c.subject
         )
     }
 
@@ -503,9 +508,12 @@ object BlazegraphViews {
       case Some(s) if s.deprecated   =>
         IO.raiseError(ViewIsDeprecated(c.id))
       case Some(s)                   =>
-        clock.realTimeInstant.map(
-          BlazegraphViewDeprecated(c.id, c.project, s.value.tpe, s.uuid, s.rev + 1, _, c.subject)
-        )
+        for {
+          now <- clock.realTimeInstant
+          _   <- validateNotDefaultView(c.id)
+        } yield {
+          BlazegraphViewDeprecated(c.id, c.project, s.value.tpe, s.uuid, s.rev + 1, now, c.subject)
+        }
     }
 
     def undeprecate(c: UndeprecateBlazegraphView) = state match {
@@ -519,6 +527,10 @@ object BlazegraphViews {
         clock.realTimeInstant.map(
           BlazegraphViewUndeprecated(c.id, c.project, s.value.tpe, s.uuid, s.rev + 1, _, c.subject)
         )
+    }
+
+    def validateNotDefaultView(iri: Iri): IO[Unit] = {
+      IO.raiseWhen(iri == defaultViewId)(ViewIsDefaultView)
     }
 
     cmd match {

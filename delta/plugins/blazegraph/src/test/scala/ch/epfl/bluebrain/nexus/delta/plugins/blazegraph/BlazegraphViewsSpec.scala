@@ -42,7 +42,7 @@ class BlazegraphViewsSpec extends CatsEffectSpec with DoobieScalaTestFixture wit
     val bob                     = User("Bob", realm)
     implicit val caller: Caller = Caller(bob, Set(bob, Group("mygroup", realm), Authenticated(realm)))
 
-    val indexingValue  = IndexingBlazegraphViewValue(
+    val indexingValue = IndexingBlazegraphViewValue(
       None,
       None,
       Set.empty,
@@ -52,7 +52,9 @@ class BlazegraphViewsSpec extends CatsEffectSpec with DoobieScalaTestFixture wit
       includeDeprecated = false,
       permissions.query
     )
-    val indexingSource = jsonContentOf("indexing-view-source.json")
+
+    val indexingSource         = jsonContentOf("indexing-view-source.json")
+    val indexingSourceWithNoId = indexingSource.mapObject(_.removeKeys("@id"))
 
     val updatedIndexingValue  = indexingValue.copy(resourceTag = Some(UserTag.unsafe("v1.5")))
     val updatedIndexingSource = indexingSource.mapObject(_.add("resourceTag", Json.fromString("v1.5")))
@@ -420,12 +422,17 @@ class BlazegraphViewsSpec extends CatsEffectSpec with DoobieScalaTestFixture wit
 
     "writing to the default view should fail" when {
       val defaultViewId = nxv + "defaultSparqlIndex"
+
+      "create default view, side effect for subsequent tests (sorry)" in {
+        views.create(defaultViewId, projectRef, indexingValue).accepted
+      }
+
       "deprecating" in {
         views.deprecate(defaultViewId, projectRef, 1).rejected shouldEqual ViewIsDefaultView
       }
 
       "updating" in {
-        views.update(defaultViewId, projectRef, 1, indexingSource).rejected shouldEqual ViewIsDefaultView
+        views.update(defaultViewId, projectRef, 1, indexingSourceWithNoId).rejected shouldEqual ViewIsDefaultView
       }
 
       "tagging" in {
