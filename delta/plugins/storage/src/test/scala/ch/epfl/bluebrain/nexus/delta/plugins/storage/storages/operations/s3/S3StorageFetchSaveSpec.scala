@@ -71,6 +71,7 @@ class S3StorageFetchSaveSpec
       val result = for {
         attr   <- s3Save.apply(filename, entity)
         _       = assertEquals(attr.digest, ComputedDigest(DigestAlgorithm.MD5, hashOfContent))
+        _       = assertEquals(attr.bytes, content.length.toLong)
         source <- s3Fetch.apply(attr.path)
       } yield consume(source)
 
