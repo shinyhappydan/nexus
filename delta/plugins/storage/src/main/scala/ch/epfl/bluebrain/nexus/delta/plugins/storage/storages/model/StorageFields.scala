@@ -155,7 +155,6 @@ object StorageFields {
           name,
           description,
           default,
-          cfg.digestAlgorithm,
           bucket,
           readPermission.getOrElse(cfg.defaultReadPermission),
           writePermission.getOrElse(cfg.defaultWritePermission),
