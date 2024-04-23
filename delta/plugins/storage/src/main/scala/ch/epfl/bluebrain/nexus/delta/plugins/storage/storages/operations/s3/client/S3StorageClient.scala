@@ -6,7 +6,7 @@ import cats.syntax.all._
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.StoragesConfig.S3StorageConfig
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.DigestAlgorithm
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.StorageRejection.StorageNotAccessible
-import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.s3.client.S3StorageClient.UploadMetadata
+import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.s3.client.S3StorageClient.{HeadObject, UploadMetadata}
 import ch.epfl.bluebrain.nexus.delta.rdf.syntax.uriSyntax
 import ch.epfl.bluebrain.nexus.delta.sdk.error.ServiceError.FeatureDisabled
 import fs2.{Chunk, Pipe, Stream}
@@ -18,7 +18,7 @@ import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, AwsCredenti
 import software.amazon.awssdk.core.async.AsyncRequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
-import software.amazon.awssdk.services.s3.model.{ChecksumAlgorithm, ChecksumMode, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ListObjectsV2Response, NoSuchBucketException, NoSuchKeyException, PutObjectRequest, PutObjectResponse}
+import software.amazon.awssdk.services.s3.model.{ChecksumAlgorithm, ChecksumMode, HeadObjectRequest, ListObjectsV2Request, ListObjectsV2Response, NoSuchBucketException, NoSuchKeyException, PutObjectRequest, PutObjectResponse}
 
 import java.net.URI
 import java.util.Base64
@@ -33,7 +33,7 @@ trait S3StorageClient {
 
   def readFile(bucket: BucketName, fileKey: FileKey): Stream[IO, Byte]
 
-  def headObject(bucket: String, key: String): IO[HeadObjectResponse]
+  def headObject(bucket: String, key: String): IO[HeadObject]
 
   def uploadFile(
       fileData: Stream[IO, Byte],
@@ -51,6 +51,12 @@ trait S3StorageClient {
 object S3StorageClient {
 
   case class UploadMetadata(checksum: String, fileSize: Long, location: Uri)
+  case class HeadObject(
+      fileSize: Long,
+      contentType: Option[String],
+      sha256Checksum: Option[String],
+      sha1Checksum: Option[String]
+  )
 
   def resource(s3Config: Option[S3StorageConfig]): Resource[IO, S3StorageClient] = s3Config match {
     case Some(cfg) =>
@@ -87,8 +93,24 @@ object S3StorageClient {
     override def readFile(bucket: BucketName, fileKey: FileKey): Stream[IO, Byte] =
       s3.readFile(bucket, fileKey)
 
-    override def headObject(bucket: String, key: String): IO[HeadObjectResponse] =
-      client.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).checksumMode(ChecksumMode.ENABLED).build)
+    override def headObject(bucket: String, key: String): IO[HeadObject] =
+      client
+        .headObject(
+          HeadObjectRequest
+            .builder()
+            .bucket(bucket)
+            .key(key)
+            .checksumMode(ChecksumMode.ENABLED)
+            .build
+        )
+        .map(resp =>
+          HeadObject(
+            resp.contentLength(),
+            Option(resp.contentType()),
+            Option(resp.checksumSHA256()),
+            Option(resp.checksumSHA1())
+          )
+        )
 
     override def objectExists(bucket: String, key: String): IO[Boolean] = {
       headObject(bucket, key)
@@ -174,7 +196,7 @@ object S3StorageClient {
 
     override def readFile(bucket: BucketName, fileKey: FileKey): Stream[IO, Byte] = Stream.raiseError[IO](disabledErr)
 
-    override def headObject(bucket: String, key: String): IO[HeadObjectResponse] = raiseDisabledErr
+    override def headObject(bucket: String, key: String): IO[HeadObject] = raiseDisabledErr
 
     override def baseEndpoint: Uri = throw disabledErr
 
