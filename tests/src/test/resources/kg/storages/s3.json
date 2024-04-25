@@ -1,6 +1,8 @@
 {
   "@id": "{{storageId}}",
   "@type": "S3Storage",
-  "default": false,
-  "bucket": "{{bucket}}"
+  {{#bucket}}
+  "bucket": "{{bucket}}",
+  {{/bucket}}
+  "default": false
 }

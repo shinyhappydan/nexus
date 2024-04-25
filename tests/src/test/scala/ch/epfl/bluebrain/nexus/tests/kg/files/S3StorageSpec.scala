@@ -28,7 +28,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.security.MessageDigest
-import java.util.Base64
+import java.util.{Base64, UUID}
 import scala.jdk.CollectionConverters._
 
 class S3StorageSpec extends StorageSpec {
@@ -162,6 +162,18 @@ class S3StorageSpec extends StorageSpec {
           "@type"    -> "StorageNotAccessible".asJson
         )
         response.status shouldEqual StatusCodes.BadRequest
+      }
+    }
+
+    "use the default bucket if a bucket is not specified in the request" in {
+      val payload = jsonContentOf(
+        "kg/storages/s3.json",
+        "storageId" -> s"https://bluebrain.github.io/nexus/vocabulary/${genId()}"
+      )
+
+      deltaClient.post[Json](s"/storages/$projectRef", payload, Coyote) { (json, response) =>
+        response.status shouldEqual StatusCodes.Created
+        json should have(bucketField(defaultBucket))
       }
     }
   }
